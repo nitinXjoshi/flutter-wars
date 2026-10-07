@@ -17,11 +17,11 @@ from dataclasses import replace
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, create_engine, select
 
 from db import engine_for, get_binding, resolve_target, session_scope
 from health import check_database
-from infra_probe import InfraProbe
+from infra_probe import InfraProbe, ensure_probe_schema
 from settings import Settings, load_settings
 
 # Loaded once per isolate. Defaults are valid even when no env vars are present.
@@ -84,7 +84,7 @@ async def sqlmodel_selftest() -> dict[str, object]:
         poolclass=StaticPool,
     )
     try:
-        SQLModel.metadata.create_all(engine)
+        ensure_probe_schema(engine)
         with Session(engine) as session:
             session.add(InfraProbe(label="selftest"))
             session.commit()

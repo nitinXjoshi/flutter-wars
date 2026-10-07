@@ -36,10 +36,17 @@ SUSPICIOUS = re.compile(
 
 
 def _tracked_files() -> list[str]:
+    """Tracked files to scan for committed credentials.
+
+    Excludes test files and `*.example` files: tests intentionally contain
+    synthetic credentials (dummy users/secrets) and examples contain placeholders,
+    so neither should be reported as a leak.
+    """
     out = subprocess.run(
         ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
     )
-    return [line for line in out.stdout.splitlines() if line]
+    files = [line for line in out.stdout.splitlines() if line]
+    return [f for f in files if "/tests/" not in f and not f.endswith(".example")]
 
 
 @requires_git

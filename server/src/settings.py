@@ -7,6 +7,7 @@ this module provides the DB-specific settings record that Foundation consumes.
 Environment separation:
 - development : DATABASE_URL -> a Neon development branch (direct, TLS).
 - test        : DATABASE_URL -> an isolated test database.
+- staging     : a HYPERDRIVE binding (staging branch); set by the Worker `vars`.
 - production  : a HYPERDRIVE binding (no DATABASE_URL needed in the Worker).
 
 Dependency-light (stdlib only) so it is safe in the Workers runtime.

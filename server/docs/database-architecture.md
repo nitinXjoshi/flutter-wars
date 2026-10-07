@@ -1,7 +1,8 @@
 # Database Connection Architecture (Module M)
 
-Scope: the database infrastructure boundary owned by Module M. No business tables,
-no migrations, no CI/CD in this phase (those come later).
+Scope: the database infrastructure boundary owned by Module M. No business tables.
+The shared migration workflow lives in `migrations/` (see `docs/migrations.md`);
+CI/CD lives in `.github/workflows/`.
 
 ## 1. Components
 
@@ -76,7 +77,8 @@ readiness endpoint.
 
 - Local/dev/test connect directly to Neon with TLS (`sslmode=require` in the URL).
 - Use Neon **branches** for dev/test/staging isolation; production is a separate
-  branch/project. (Staging wiring is a later phase.)
+  branch/project. The staging Worker uses a separate Hyperdrive id + Neon branch
+  (ids are placeholders until account access is available).
 - Neon's pooled endpoint (`...-pooler...`) is optional for local tooling; the
   Worker path goes through Hyperdrive instead.
 - No Neon-specific code in the app — only the connection target differs.
@@ -87,7 +89,8 @@ readiness endpoint.
 | --- | --- | --- | --- |
 | development | settings | required (dev Neon branch) | local `.env` (gitignored) |
 | test | settings | required (test DB/branch) | CI secret / `.env` |
-| production | Hyperdrive binding | not used in the Worker | `wrangler secret put` |
+| staging | Hyperdrive binding | not used in the Worker | CI secret for migrations |
+| production | Hyperdrive binding | not used in the Worker | `wrangler secret put` / CI secret |
 
 Env vars: `APP_ENV`, `DATABASE_URL`, `DB_CONNECT_TIMEOUT_SECONDS`,
 `DB_APPLICATION_NAME`. See `.env.example` / `.dev.vars.example`.

@@ -66,8 +66,13 @@ jobs:
       - name: Secret scan (tracked files)
         working-directory: .
         run: |
-          if git grep -nE 'postgres(ql)?(\+psycopg)?://[A-Za-z0-9_.-]+:[^@/[:space:]]{6,}@' -- \
-              server ':(exclude)server/tests' ':(exclude)server/*.example' ; then
+          matches="$(git grep -nE 'postgres(ql)?(\+psycopg)?://[A-Za-z0-9_.-]+:[^@/[:space:]]{6,}@' -- \
+                       server ':(exclude)server/tests' ':(exclude)server/*.example' || true)"
+          # Ignore obvious placeholders (e.g. USER:PASSWORD@...) used in docs.
+          real="$(printf '%s\n' "$matches" | grep -v 'PASSWORD' | grep -v '^$' || true)"
+          if [ -n "$real" ]; then
             echo "::error::Potential credential committed"
+            printf '%s\n' "$real"
             exit 1
           fi
+          echo "No credential-like strings found in tracked files"

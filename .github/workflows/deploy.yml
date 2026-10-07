@@ -3,14 +3,8 @@ name: Deploy
 on:
   push:
     branches: [main]
+  # Manual re-run. Deploy jobs always target staging then production in order.
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Target environment
-        type: choice
-        options: [staging, production]
-        required: true
-        default: staging
 
 concurrency:
   group: deploy-${{ github.ref }}

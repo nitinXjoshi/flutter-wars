@@ -82,12 +82,18 @@ Hyperdrive), using a `DATABASE_URL` secret provided by the deploy environment:
 DATABASE_URL=... scripts/migrate.sh      # uv run alembic upgrade head
 ```
 
-Deployment ordering (avoid app/schema mismatch):
-1. Migrate first for additive (backward-compatible) changes, then deploy the app.
-2. Never drop/rename columns in the same release that first introduces the
-   replacement code. Use expand (add) -> migrate (backfill/dual-write) -> contract
-   (remove old) across separate deployments.
-3. Run `alembic check` before deploy to catch drift.
+Deployment ordering (the authoritative flow is in [deployment.md](deployment.md)):
+`validate -> deploy the compatible app -> apply migrations`. Because the migration
+is applied **after** the deploy, it must remain compatible with the previously
+deployed app:
+1. Expand first — add nullable columns / new tables / new indexes so the currently
+   running app is unaffected.
+2. Backfill and switch reads/writes across releases.
+3. Contract (drop/rename/constrain) only later, once no running version uses the old shape.
+4. If the new app genuinely cannot run against the old schema, migrate **before**
+   deploy instead — still keeping the migration compatible with the currently
+   deployed version.
+Run `alembic check` before deploy to catch drift.
 
 ## Recovery
 
