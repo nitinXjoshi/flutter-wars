@@ -1,0 +1,129 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, production]
+        required: true
+        default: staging
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Tests and bundle
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: flutter_wars_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://ci:ci@127.0.0.1:5432/flutter_wars_ci
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: uv sync --dev
+      - run: npm ci
+      - name: Validate Worker bundle (dry-run)
+        run: uv run pywrangler deploy --dry-run --outdir dist
+      - run: uv run python scripts/dev_setup.py
+      - run: uv run pytest -q
+
+  deploy-staging:
+    name: Deploy staging
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      BASE_URL: ${{ vars.STAGING_BASE_URL }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: uv sync --dev
+      - run: npm ci
+
+      # Order per docs/deployment.md: validate state -> deploy compatible app ->
+      # apply migrations (must be backward compatible) -> verify.
+      - name: Validate migration state
+        run: uv run alembic check
+
+      - name: Deploy Worker (staging)
+        run: uv run pywrangler deploy --env staging
+
+      - name: Apply migrations (staging)
+        run: uv run alembic upgrade head
+
+      - name: Verify deployment (staging)
+        working-directory: .
+        run: server/scripts/verify_deployment.sh "$BASE_URL"
+
+  deploy-production:
+    name: Deploy production
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Add required reviewers to this GitHub Environment for manual approval.
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: uv sync --dev
+      - run: npm ci
+
+      - name: Validate migration state
+        run: uv run alembic check
+
+      - name: Deploy Worker (production)
+        run: uv run pywrangler deploy --env production
+
+      - name: Apply migrations (production)
+        run: uv run alembic upgrade head
+
+      - name: Verify deployment (production)
+        working-directory: .
+        run: server/scripts/verify_deployment.sh "$BASE_URL"

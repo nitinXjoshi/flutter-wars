@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Tests, migrations, bundle
+    runs-on: ubuntu-latest
+    # A real Postgres service so DB, readiness and migration tests run for real.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: flutter_wars_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://ci:ci@127.0.0.1:5432/flutter_wars_ci
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: uv sync --dev
+
+      - name: Install Node dependencies (wrangler)
+        run: npm ci
+
+      - name: Validate Worker bundle (dry-run)
+        run: uv run pywrangler deploy --dry-run --outdir dist
+
+      - name: Prepare dev/test harness schema
+        run: uv run python scripts/dev_setup.py
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Validate migration workflow
+        run: |
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+          uv run alembic downgrade base
+
+      - name: Secret scan (tracked files)
+        working-directory: .
+        run: |
+          if git grep -nE 'postgres(ql)?(\+psycopg)?://[A-Za-z0-9_.-]+:[^@/[:space:]]{6,}@' -- \
+              server ':(exclude)server/tests' ':(exclude)server/*.example' ; then
+            echo "::error::Potential credential committed"
+            exit 1
+          fi

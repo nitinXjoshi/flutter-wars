@@ -1,0 +1,67 @@
+{
+  // Module M Worker configuration. Docs:
+  //   https://developers.cloudflare.com/workers/languages/python/packages/fastapi/
+  //   https://developers.cloudflare.com/hyperdrive/examples/python-workers/
+  //
+  // No Worker runtime secrets are required: the HYPERDRIVE binding carries the
+  // database credentials. APP_ENV is a non-sensitive plain var. Deployment
+  // credentials (CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID) live in CI secrets,
+  // and migration credentials in a DATABASE_URL secret -- never in this file.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flutter-wars-api",
+  "main": "src/worker.py",
+  // Must be >= 2026-09-08 for Hyperdrive-from-Python-Workers support.
+  "compatibility_date": "2026-10-07",
+  "compatibility_flags": ["python_workers"],
+  "observability": {
+    "enabled": true
+  },
+
+  // Top-level = local development. `pywrangler dev` connects directly to the DB
+  // named by CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+  // (see .dev.vars.example); the id below is not used in local dev.
+  "vars": {
+    "APP_ENV": "development"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "REPLACE_WITH_DEV_HYPERDRIVE_ID"
+    }
+  ],
+
+  // Bindings/vars/secrets are NON-inheritable: each environment declares its own.
+  //
+  // Hyperdrive caching: this platform has correctness-critical reads (credits,
+  // inventory, market state, post-commit reads, IDE sync) where stale results are
+  // unacceptable. The primary binding MUST point at a CACHE-DISABLED Hyperdrive
+  // configuration, so create it with:
+  //   wrangler hyperdrive create <name> --connection-string=... --caching-disabled
+  // A future optimization MAY add HYPERDRIVE_CACHED (for safe public reads) and
+  // HYPERDRIVE_FRESH, but correctness-sensitive reads must use the fresh path.
+  // See docs/deployment.md and docs/database-architecture.md.
+  "env": {
+    "staging": {
+      "vars": {
+        "APP_ENV": "staging"
+      },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "REPLACE_WITH_STAGING_HYPERDRIVE_ID"
+        }
+      ]
+    },
+    "production": {
+      "vars": {
+        "APP_ENV": "production"
+      },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "REPLACE_WITH_PRODUCTION_HYPERDRIVE_ID"
+        }
+      ]
+    }
+  }
+}
